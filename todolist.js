@@ -142,6 +142,10 @@ app.use(morgan('combined'))
     res.locals.redis.quit();
     res.redirect('/');
 })
+.get('/list/:uuid', function(req,res){
+    req.session.user=ent.encode(req.params.uuid);
+    res.redirect('/');
+})
 .get('/export', function(req,res){
     res.csv([req.session.todo]);
 });

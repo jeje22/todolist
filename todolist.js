@@ -39,12 +39,12 @@ app.use(morgan('combined'))
 })
 .get('/', function(req, res){
     var todos=[];
-    res.locals.redis.lrange("todo:"+req.session.user,0,-1, function(err, reply){ // i.e. LRANGE todo:20 0 -1
+    res.locals.redis.sort("todo:"+req.session.user,"by","todo:"+req.session.user+":*->order", function(err, reply){ // i.e. SORT todo:20 by todo:20:*->order
         var promises=reply.map(function(elem){
             
             return new Promise(function(resolve, reject){
-                res.locals.redis.get("todo:"+req.session.user+":"+elem, function(err, reply1){
-                    var current=JSON.parse(reply1);
+                res.locals.redis.hmget("todo:"+req.session.user+":"+elem,"name","date","priority","order", function(err, reply1){ // i.e. HMGET todo:20:0 name date priority order
+                    var current={"name": reply1[0], "date":reply1[1],"priority":reply1[2],"order":reply1[3]};
                     current.id=elem;
                     todos.push(current);
                     resolve();
@@ -67,14 +67,15 @@ app.use(morgan('combined'))
 
     res.locals.redis.incr("todos:user:"+req.session.user, function(err,reply){ // getting max id with todos:user:20
         var num=reply-1;
+        todo.order=num;
         var promises=[
             new Promise(function(resolve, reject){
-                res.locals.redis.set("todo:"+req.session.user+":"+num,JSON.stringify(todo),function(err, reply1){ // i.e. SET todo:20:0 {"name":"Derp","date":"18/09/2017","priority":3}
+                res.locals.redis.hmset("todo:"+req.session.user+":"+num,"name",todo.name,"date",todo.date,"priority",todo.priority,"order",todo.order, function(err, reply1){ // i.e. HMSET todo:20:0 "name" "Derp" "date" "18/09/2017" "priority" 3 order 0
                     resolve();
                 });
             }),
             new Promise(function(resolve, reject){
-                res.locals.redis.rpush("todo:"+req.session.user, num, function(err, reply2){  // i.e. RPUSH todo:20 0
+                res.locals.redis.sadd("todo:"+req.session.user, num, function(err, reply1){  // i.e. SADD todo:20 0
                     resolve();
                 });
             })
@@ -95,12 +96,12 @@ app.use(morgan('combined'))
 
     var promises=[];
     promises.push(new Promise(function(resolve, reject){
-        res.locals.redis.del("todo:"+req.session.user+":"+id,function(err,reply){
+        res.locals.redis.del("todo:"+req.session.user+":"+id,function(err,reply){ // i.e. : DEL todo:20:0
             resolve();
         });
     }));
     promises.push(new Promise(function(resolve, reject){
-        res.locals.redis.lrem("todo:"+req.session.user,0,id, function(err,reply){
+        res.locals.redis.srem("todo:"+req.session.user,id, function(err,reply){ // i.e. : SREM todo:20 0
             resolve();
         });
     }));
@@ -117,10 +118,10 @@ app.use(morgan('combined'))
 })
 .post('/change/:id', function(req,res){
     var id=req.params.id;
-    var new_todo={"name":req.body.new_name,"date":req.body.new_date,"priority":req.body.new_priority};
+    var new_todo={"name":req.body.new_name,"date":req.body.new_date,"priority":req.body.new_priority,"order":id};
 
-    res.locals.redis.set("todo:"+req.session.user+":"+id,JSON.stringify(new_todo), function(err,reply){
-        req.app.socket.broadcast.emit('change',{id: id, todo: new_todo});
+    res.locals.redis.hmset("todo:"+req.session.user+":"+id,"name",new_todo.name,"date",new_todo.date,"priority",new_todo.priority,"order",new_todo.order, function(err, reply1){
+        req.app.socket.broadcast.emit('change', new_todo);
         res.locals.redis.quit();
         res.redirect('/');
     });
@@ -128,19 +129,93 @@ app.use(morgan('combined'))
 .get('/up/:id',function(req,res){
     var id=req.params.id;
 
-    /*res.locals.redis.lindex("todo:"+req.session.user, id+1, function(err, reply){
-        if(reply!=null)
+    res.locals.redis.sort("todo:"+req.session.user,"by","todo:"+req.session.user+":*->order", function(err, reply){
+        var index=reply.findIndex(function(elem){
+            return elem==id;
+        });
+        if(index>0)
         {
-            //res.locals.redis.lset("todo:"+req.session.user, id+1,);
+            var id_previous=reply[index-1];
+            res.locals.redis.hget("todo:"+req.session.user+":"+id_previous,"order", function(err, order_previous){
+                res.locals.redis.hget("todo:"+req.session.user+":"+id,"order", function(err,order_next){
+                    var promises=[
+                        new Promise(function(resolve, reject){
+                            res.locals.redis.hset("todo:"+req.session.user+":"+id,"order",order_previous, function(err,reply1){
+                                resolve();
+                            });
+                        }),
+                        new Promise(function(resolve, reject){
+                            res.locals.redis.hset("todo:"+req.session.user+":"+id_previous,"order",order_next, function(err,reply1){
+                                resolve();
+                            });
+                        })
+                    ];
+        
+                    Promise.all(promises)
+                    .then(function(){
+                        req.app.socket.broadcast.emit('down',id);
+                        res.locals.redis.quit();
+                        res.redirect('/');
+                    })
+                    .catch(function(reason){
+                        console.log(reason);
+                    });
+                });
+            });
         }
-    });*/
-    res.locals.redis.quit();
-    res.redirect('/');
+        else
+        {
+            console.log("can't get higher than the first element");
+            res.locals.redis.quit();
+            res.redirect('/');
+        }
+    });
 })
 .get('/down/:id',function(req,res){
     var id=req.params.id;
-    res.locals.redis.quit();
-    res.redirect('/');
+
+    res.locals.redis.sort("todo:"+req.session.user,"by","todo:"+req.session.user+":*->order", function(err, reply){
+        var index=reply.findIndex(function(elem){
+            return elem==id;
+        });
+        if(index<reply.length-1 || index==-1)
+        {
+            var id_next=reply[index+1];
+            res.locals.redis.hget("todo:"+req.session.user+":"+id_next,"order", function(err, order_next){
+                res.locals.redis.hget("todo:"+req.session.user+":"+id,"order", function(err,order_previous){
+
+                    var promises=[
+                        new Promise(function(resolve, reject){
+                            res.locals.redis.hset("todo:"+req.session.user+":"+id,"order",order_next, function(err,reply1){
+                                resolve();
+                            });
+                        }),
+                        new Promise(function(resolve, reject){
+                            res.locals.redis.hset("todo:"+req.session.user+":"+id_next,"order",order_previous, function(err,reply1){
+                                resolve();
+                            });
+                        })
+                    ];
+        
+                    Promise.all(promises)
+                    .then(function(){
+                        req.app.socket.broadcast.emit('down',id);
+                        res.locals.redis.quit();
+                        res.redirect('/');
+                    })
+                    .catch(function(reason){
+                        console.log(reason);
+                    });
+                });
+            });
+        }
+        else
+        {
+            console.log("can't get lower than the last element");
+            res.locals.redis.quit();
+            res.redirect('/');
+        }
+    });
 })
 .get('/list/:uuid', function(req,res){
     req.session.user=ent.encode(req.params.uuid);

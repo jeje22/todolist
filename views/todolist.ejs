@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+
+<html>
+    <head>
+        <title>Ma todolist</title>
+        <style>
+            a {text-decoration: none; color: black;}
+            span.priority1{font-weight: bold; color: red;}
+            span.priority2{color:blue;}
+            span.priority3{color: green;}
+            a.bold{font-weight:bold;}
+        </style>
+    </head>
+
+    <body>
+        <h1>Ma todolist</h1>
+        <ul>
+            <%
+            todo.forEach(function(obj, index){
+            %>
+
+            <li id="todo<%=obj.id%>"><a class="bold" href="/up/<%=obj.id%>">↑</a><a class="bold" href="/down/<%=obj.id%>">↓</a>  <a href="/delete/<%=obj.id%>">✘</a> <span class="priority<%=obj.priority%>"><%=obj.name%></span>
+                <form method="POST" action="/change/<%=obj.id%>">
+                    <input type="text" name="new_name" placeholder="Nouveau nom" value="<%=obj.name%>" />
+                    <input type="date" name="new_date" value="<%=obj.date%>"/>
+                    <select name="new_priority">
+                        <option value="1" <%=(obj.priority==1 ? "selected" : "")%> >1</option>
+                        <option value="2" <%=(obj.priority==2 ? "selected" : "")%> >2</option>
+                        <option value="3" <%=(obj.priority==3 ? "selected" : "")%> >3</option>
+                    </select>
+                    <input type="submit" value="Changer" />
+                </form>
+            </li>
+            <%
+            });
+            %>
+        </ul>
+        <form method="POST" action="/add">
+            <label for="name">Que dois-je faire ?</label>
+            <input type="text" name="name" id="name" placeholder="Quelque chose" />
+            <input type="date" name="date" id="date" />
+            <select name="priority" id="priority">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3" selected>3</option>
+            </select>
+            <input type="Submit" value="Valider" />
+        </form>
+        <a href="/export">Export</a>
+
+        <script src="https://code.jquery.com/jquery-3.2.1.min.js"></script>
+        <script src="/socket.io/socket.io.js"></script>
+        <script>
+            var socket = io.connect('http://localhost:8080');
+            socket.on('delete', function(id){
+                document.getElementById("todo"+id).remove();
+            });
+            socket.on('new', function(data){
+                var string='<li id="todo'+data.id+'>"><a class="bold" href="/up/'+data.id+'">↑</a><a class="bold" href="/down/'+data.id+'">↓</a>  <a href="/delete/'+data.id+'">✘</a> <span class="priority'+data.priority+'">'+data.name+'</span>';
+                    string+='<form method="POST" action="/change/'+data.id+'">';
+                        string+='<input type="text" name="new_name" placeholder="Nouveau nom" value='+data.name+' />';
+                        string+='<input type="date" name="new_date" id="date" value="'+data.date+'"/>';
+                        string+='<select name="new_priority" id="new_priority">';
+                            string+='<option value="1" '+(data.priority==1 ? "selected" : "") +'>1</option>';
+                            string+='<option value="2" '+(data.priority==2 ? "selected" : "") +'>2</option>';
+                            string+='<option value="3" '+(data.priority==3 ? "selected" : "") +'>3</option>';
+                        string+='</select>';
+                        string+='<input type="submit" value="Changer" />';
+                    string+='</form>';
+                string+='</li>';
+                $("ul").append(string);
+            });
+            socket.on('change', function(data){
+                
+            });
+        </script>
+    </body>
+</html>

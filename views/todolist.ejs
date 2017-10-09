@@ -52,12 +52,13 @@
         <script src="/socket.io/socket.io.js"></script>
         <script>
             var socket = io.connect('http://localhost:8080');
+            console.log("connected");
             socket.on('delete', function(id){
                 document.getElementById("todo"+id).remove();
             });
             socket.on('new', function(data){
-                var string='<li id="todo'+data.id+'>"><a class="bold" href="/up/'+data.id+'">↑</a><a class="bold" href="/down/'+data.id+'">↓</a>  <a href="/delete/'+data.id+'">✘</a> <span class="priority'+data.priority+'">'+data.name+'</span>';
-                    string+='<form method="POST" action="/change/'+data.id+'">';
+                var string='<li id="todo'+data.order+'>"><a class="bold" href="/up/'+data.order+'">↑</a><a class="bold" href="/down/'+data.order+'">↓</a>  <a href="/delete/'+data.order+'">✘</a> <span class="priority'+data.priority+'">'+data.name+'</span>';
+                    string+='<form method="POST" action="/change/'+data.order+'">';
                         string+='<input type="text" name="new_name" placeholder="Nouveau nom" value='+data.name+' />';
                         string+='<input type="date" name="new_date" id="date" value="'+data.date+'"/>';
                         string+='<select name="new_priority" id="new_priority">';
